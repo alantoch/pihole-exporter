@@ -1,0 +1,24 @@
+# Local Go caches used by sandboxed/dev runs.
+.gocache/
+.gopath/
+.codex
+
+# Local IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Secrets and local environment overrides.
+.env
+.env.*
+!.env.example
+
+# Build and test output.
+/pihole-exporter
+/bin/
+/dist/
+*.test
+coverage.out
+coverage.html
