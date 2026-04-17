@@ -98,6 +98,8 @@ In addition to Pi-hole metrics, the exporter emits:
 | Metric | Description |
 | --- | --- |
 | `pihole_exporter_build_info` | Exporter build information with the compiled Pi-hole API version |
+| `pihole_exporter_scrape_duration_seconds` | Duration of the last Pi-hole scrape in seconds |
+| `pihole_exporter_scrape_success` | Whether the last Pi-hole scrape succeeded, where `1` is success and `0` is failure |
 
 Pi-hole metrics include:
 

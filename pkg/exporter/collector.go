@@ -10,6 +10,27 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
+var (
+	buildInfoDesc = prometheus.NewDesc(
+		"pihole_exporter_build_info",
+		"Build information for the Pi-hole exporter.",
+		nil,
+		prometheus.Labels{"pihole_api_version": pihole.CompiledPiHoleAPIVersion},
+	)
+	scrapeSuccessDesc = prometheus.NewDesc(
+		"pihole_exporter_scrape_success",
+		"Whether the last Pi-hole scrape succeeded.",
+		nil,
+		nil,
+	)
+	scrapeDurationDesc = prometheus.NewDesc(
+		"pihole_exporter_scrape_duration_seconds",
+		"Duration of the last Pi-hole scrape in seconds.",
+		nil,
+		nil,
+	)
+)
+
 type Collector struct {
 	client  *pihole.AuthClient
 	timeout time.Duration
@@ -35,22 +56,14 @@ func (c *Collector) Describe(ch chan<- *prometheus.Desc) {
 		ch <- c.desc(spec.Name, spec.Help, labelNames(spec))
 	}
 
-	ch <- prometheus.NewDesc(
-		"pihole_exporter_build_info",
-		"Build information for the Pi-hole exporter.",
-		nil,
-		prometheus.Labels{"pihole_api_version": pihole.CompiledPiHoleAPIVersion},
-	)
+	ch <- buildInfoDesc
+	ch <- scrapeSuccessDesc
+	ch <- scrapeDurationDesc
 }
 
 func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 	ch <- prometheus.MustNewConstMetric(
-		prometheus.NewDesc(
-			"pihole_exporter_build_info",
-			"Build information for the Pi-hole exporter.",
-			nil,
-			prometheus.Labels{"pihole_api_version": pihole.CompiledPiHoleAPIVersion},
-		),
+		buildInfoDesc,
 		prometheus.GaugeValue,
 		1,
 	)
@@ -58,14 +71,21 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 
+	start := time.Now()
 	metrics, err := c.client.CollectMetrics(ctx)
+	duration := time.Since(start).Seconds()
 	if err != nil {
+		ch <- prometheus.MustNewConstMetric(scrapeSuccessDesc, prometheus.GaugeValue, 0)
+		ch <- prometheus.MustNewConstMetric(scrapeDurationDesc, prometheus.GaugeValue, duration)
 		ch <- prometheus.NewInvalidMetric(
 			prometheus.NewDesc("pihole_exporter_scrape_error", "Pi-hole scrape error.", nil, nil),
 			err,
 		)
 		return
 	}
+
+	ch <- prometheus.MustNewConstMetric(scrapeSuccessDesc, prometheus.GaugeValue, 1)
+	ch <- prometheus.MustNewConstMetric(scrapeDurationDesc, prometheus.GaugeValue, duration)
 
 	for _, metric := range metrics {
 		valueType, err := prometheusValueType(metric.Kind)

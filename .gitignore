@@ -19,6 +19,7 @@
 /pihole-exporter
 /bin/
 /dist/
+__debug_bin*
 *.test
 coverage.out
 coverage.html
