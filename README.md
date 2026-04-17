@@ -1,10 +1,183 @@
 # Pi-hole Exporter
 
-Prometheus exporter for Pi-hole v6 metrics.
+Pi-hole Exporter turns Pi-hole v6 statistics into Prometheus metrics.
 
-The exporter authenticates against the Pi-hole API, scrapes the compiled Pi-hole metrics endpoints, and exposes them in Prometheus format on `/metrics`.
+Most people should run it with Docker:
 
-## Features
+```text
+alantoch/pihole-exporter:latest
+```
+
+The exporter connects to your Pi-hole API, signs in with a Pi-hole app password, and publishes metrics at:
+
+```text
+http://localhost:9617/metrics
+```
+
+## Install With Docker
+
+You need:
+
+- Docker
+- Pi-hole v6
+- A Pi-hole app password
+- The URL for your Pi-hole web/API port, for example `http://192.168.0.2:9000`
+
+In the examples below, replace:
+
+- `http://192.168.0.2:9000` with your Pi-hole URL
+- `your-app-password` with your Pi-hole app password
+
+Run the exporter:
+
+```sh
+docker run -d \
+  --name pihole-exporter \
+  --restart unless-stopped \
+  -p 9617:9617 \
+  -e PIHOLE_BASE_URL="http://192.168.0.2:9000" \
+  -e PIHOLE_APP_PASSWORD="your-app-password" \
+  alantoch/pihole-exporter:latest
+```
+
+Check that it is running:
+
+```sh
+curl http://localhost:9617/healthz
+```
+
+You should see:
+
+```text
+ok
+```
+
+Check the metrics:
+
+```sh
+curl http://localhost:9617/metrics
+```
+
+Prometheus, Grafana Alloy, or another scraper can now scrape:
+
+```text
+http://pihole-exporter:9617/metrics
+```
+
+or, from outside Docker:
+
+```text
+http://localhost:9617/metrics
+```
+
+## Install With Docker Compose
+
+Create a `.env` file next to `compose.yaml`:
+
+```sh
+PIHOLE_BASE_URL=http://192.168.0.2:9000
+PIHOLE_APP_PASSWORD=your-app-password
+```
+
+Create `compose.yaml`:
+
+```yaml
+services:
+  pihole-exporter:
+    image: alantoch/pihole-exporter:latest
+    restart: unless-stopped
+    ports:
+      - "9617:9617"
+    environment:
+      PIHOLE_BASE_URL: ${PIHOLE_BASE_URL}
+      PIHOLE_APP_PASSWORD: ${PIHOLE_APP_PASSWORD}
+```
+
+Start it:
+
+```sh
+docker compose up -d
+```
+
+Check it:
+
+```sh
+curl http://localhost:9617/healthz
+```
+
+## If Pi-hole Uses Host Networking
+
+If Pi-hole is running with `network_mode: host`, the exporter usually cannot reach it by container name. Use one of these instead:
+
+- Use the Pi-hole machine's LAN address, for example `http://192.168.0.2:9000`
+- Use `host.docker.internal` with Docker's host gateway
+
+Example Compose service using `host.docker.internal`:
+
+```yaml
+services:
+  pihole-exporter:
+    image: alantoch/pihole-exporter:latest
+    restart: unless-stopped
+    ports:
+      - "9617:9617"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      PIHOLE_BASE_URL: "http://host.docker.internal:9000"
+      PIHOLE_APP_PASSWORD: ${PIHOLE_APP_PASSWORD}
+```
+
+If the exporter is also attached to an internal monitoring network, add a second normal bridge network so it can reach Pi-hole:
+
+```yaml
+services:
+  pihole-exporter:
+    image: alantoch/pihole-exporter:latest
+    restart: unless-stopped
+    ports:
+      - "9617:9617"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      PIHOLE_BASE_URL: "http://host.docker.internal:9000"
+      PIHOLE_APP_PASSWORD: ${PIHOLE_APP_PASSWORD}
+    networks:
+      - monitoring-internal
+      - pihole-egress
+
+networks:
+  monitoring-internal:
+    external: true
+    name: grafana_monitoring-internal
+
+  pihole-egress:
+    driver: bridge
+```
+
+## Connect Prometheus
+
+If Prometheus runs in the same Compose project as the exporter, add this to `prometheus.yml`:
+
+```yaml
+scrape_configs:
+  - job_name: pihole
+    static_configs:
+      - targets:
+          - pihole-exporter:9617
+```
+
+If Prometheus runs outside Docker, use the published host port:
+
+```yaml
+scrape_configs:
+  - job_name: pihole
+    static_configs:
+      - targets:
+          - localhost:9617
+```
+
+## What It Exports
 
 - Supports Pi-hole API `6.0`
 - Authenticates with a Pi-hole app password through `/api/auth`
@@ -15,7 +188,7 @@ The exporter authenticates against the Pi-hole API, scrapes the compiled Pi-hole
 
 ## Requirements
 
-- Go 1.22 or newer
+- Docker, or Go 1.22 or newer for local development
 - Pi-hole v6 with API access enabled
 - A Pi-hole app password
 
@@ -62,22 +235,6 @@ go run ./cmd/pihole-exporter \
 
 ## Docker
 
-Run the published image from Docker Hub:
-
-```sh
-docker run --rm -p 9617:9617 \
-  -e PIHOLE_BASE_URL="http://192.168.0.2" \
-  -e PIHOLE_APP_PASSWORD="your-app-password" \
-  alantoch/pihole-exporter:latest
-```
-
-The exporter is then available at:
-
-```sh
-curl http://localhost:9617/healthz
-curl http://localhost:9617/metrics
-```
-
 Build the image:
 
 ```sh
@@ -100,35 +257,6 @@ docker run --rm -p 9617:9617 \
   -e PIHOLE_BASE_URL="http://192.168.0.2" \
   -e PIHOLE_APP_PASSWORD="your-app-password" \
   pihole-exporter
-```
-
-## Docker Compose
-
-Create a `.env` file next to `compose.yaml`:
-
-```sh
-PIHOLE_BASE_URL=http://192.168.0.2
-PIHOLE_APP_PASSWORD=your-app-password
-```
-
-Run only the exporter:
-
-```yaml
-services:
-  pihole-exporter:
-    image: alantoch/pihole-exporter:latest
-    restart: unless-stopped
-    ports:
-      - "9617:9617"
-    environment:
-      PIHOLE_BASE_URL: ${PIHOLE_BASE_URL}
-      PIHOLE_APP_PASSWORD: ${PIHOLE_APP_PASSWORD}
-```
-
-Start it:
-
-```sh
-docker compose up -d
 ```
 
 ## Prometheus
