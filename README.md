@@ -62,13 +62,38 @@ go run ./cmd/pihole-exporter \
 
 ## Docker
 
+Run the published image from Docker Hub:
+
+```sh
+docker run --rm -p 9617:9617 \
+  -e PIHOLE_BASE_URL="http://192.168.0.2" \
+  -e PIHOLE_APP_PASSWORD="your-app-password" \
+  alantoch/pihole-exporter:latest
+```
+
+The exporter is then available at:
+
+```sh
+curl http://localhost:9617/healthz
+curl http://localhost:9617/metrics
+```
+
 Build the image:
 
 ```sh
 docker build -t pihole-exporter .
 ```
 
-Run it:
+Build and push a multi-architecture image for AMD64 and ARM64:
+
+```sh
+docker buildx build \
+  --platform linux/amd64,linux/arm64 \
+  -t alantoch/pihole-exporter:latest \
+  --push .
+```
+
+Run the locally built image:
 
 ```sh
 docker run --rm -p 9617:9617 \
@@ -77,9 +102,48 @@ docker run --rm -p 9617:9617 \
   pihole-exporter
 ```
 
+## Docker Compose
+
+Create a `.env` file next to `compose.yaml`:
+
+```sh
+PIHOLE_BASE_URL=http://192.168.0.2
+PIHOLE_APP_PASSWORD=your-app-password
+```
+
+Run only the exporter:
+
+```yaml
+services:
+  pihole-exporter:
+    image: alantoch/pihole-exporter:latest
+    restart: unless-stopped
+    ports:
+      - "9617:9617"
+    environment:
+      PIHOLE_BASE_URL: ${PIHOLE_BASE_URL}
+      PIHOLE_APP_PASSWORD: ${PIHOLE_APP_PASSWORD}
+```
+
+Start it:
+
+```sh
+docker compose up -d
+```
+
 ## Prometheus
 
-Example scrape configuration:
+If Prometheus runs outside Docker, scrape the published host port:
+
+```yaml
+scrape_configs:
+  - job_name: pihole
+    static_configs:
+      - targets:
+          - localhost:9617
+```
+
+If Prometheus runs in the same Docker Compose project as the exporter, use the service name:
 
 ```yaml
 scrape_configs:
@@ -87,6 +151,124 @@ scrape_configs:
     static_configs:
       - targets:
           - pihole-exporter:9617
+```
+
+Example `compose.yaml` with Prometheus:
+
+```yaml
+services:
+  pihole-exporter:
+    image: alantoch/pihole-exporter:latest
+    restart: unless-stopped
+    ports:
+      - "9617:9617"
+    environment:
+      PIHOLE_BASE_URL: ${PIHOLE_BASE_URL}
+      PIHOLE_APP_PASSWORD: ${PIHOLE_APP_PASSWORD}
+
+  prometheus:
+    image: prom/prometheus:latest
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+```
+
+Use this `prometheus.yml` next to `compose.yaml`:
+
+```yaml
+global:
+  scrape_interval: 30s
+
+scrape_configs:
+  - job_name: pihole
+    static_configs:
+      - targets:
+          - pihole-exporter:9617
+```
+
+## Grafana Alloy
+
+If Alloy runs in the same Docker Compose project as the exporter, scrape the exporter with `prometheus.scrape` and forward the metrics to any Prometheus remote write compatible endpoint.
+
+For local Prometheus, enable the remote write receiver on the Prometheus container:
+
+```yaml
+services:
+  prometheus:
+    image: prom/prometheus:latest
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --web.enable-remote-write-receiver
+    ports:
+      - "9090:9090"
+```
+
+Then use this Alloy configuration:
+
+```river
+prometheus.scrape "pihole" {
+  targets = [
+    {"__address__" = "pihole-exporter:9617"},
+  ]
+
+  forward_to      = [prometheus.remote_write.default.receiver]
+  scrape_interval = "30s"
+}
+
+prometheus.remote_write "default" {
+  endpoint {
+    url = "http://prometheus:9090/api/v1/write"
+  }
+}
+```
+
+For Grafana Cloud, use your remote write URL and credentials:
+
+```river
+prometheus.scrape "pihole" {
+  targets = [
+    {"__address__" = "pihole-exporter:9617"},
+  ]
+
+  forward_to      = [prometheus.remote_write.grafana_cloud.receiver]
+  scrape_interval = "30s"
+}
+
+prometheus.remote_write "grafana_cloud" {
+  endpoint {
+    url = "https://prometheus-prod-xx-xxx.grafana.net/api/prom/push"
+
+    basic_auth {
+      username = "your-instance-id"
+      password = "your-api-token"
+    }
+  }
+}
+```
+
+Example `compose.yaml` with Alloy:
+
+```yaml
+services:
+  pihole-exporter:
+    image: alantoch/pihole-exporter:latest
+    restart: unless-stopped
+    ports:
+      - "9617:9617"
+    environment:
+      PIHOLE_BASE_URL: ${PIHOLE_BASE_URL}
+      PIHOLE_APP_PASSWORD: ${PIHOLE_APP_PASSWORD}
+
+  alloy:
+    image: grafana/alloy:latest
+    restart: unless-stopped
+    command:
+      - run
+      - /etc/alloy/config.alloy
+    volumes:
+      - ./config.alloy:/etc/alloy/config.alloy:ro
 ```
 
 ## Metrics
