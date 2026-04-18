@@ -1,6 +1,6 @@
 # Pi-hole Exporter
 
-Pi-hole Exporter turns Pi-hole v6 statistics into metrics for Prometheus or OpenTelemetry-compatible backends.
+Pi-hole Exporter turns Pi-hole statistics into metrics for Prometheus or OpenTelemetry-compatible backends. It builds on the API spec so it's compatible with any version 6.0 and up.
 
 ![Pi-hole exporter Grafana dashboard](docs/images/grafana-dashboard.png)
 
