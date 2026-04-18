@@ -25,6 +25,33 @@ func TestParseConfigUnsetsPasswordEnvByDefault(t *testing.T) {
 	}
 }
 
+func TestParseConfigDefaultsToPrometheusMetricsExporter(t *testing.T) {
+	t.Setenv("PIHOLE_BASE_URL", "http://127.0.0.1:8080")
+	t.Setenv(pihole.DefaultAppPasswordEnv, "app-password")
+
+	withTestCommandLine(t, "pihole-exporter")
+
+	cfg := parseConfig()
+
+	if cfg.metricsExporter != metricsExporterPrometheus {
+		t.Fatalf("metricsExporter = %q, want %q", cfg.metricsExporter, metricsExporterPrometheus)
+	}
+}
+
+func TestParseConfigReadsOpenTelemetryMetricsExporterEnv(t *testing.T) {
+	t.Setenv("PIHOLE_BASE_URL", "http://127.0.0.1:8080")
+	t.Setenv(pihole.DefaultAppPasswordEnv, "app-password")
+	t.Setenv("OTEL_METRICS_EXPORTER", " OTLPHTTP ")
+
+	withTestCommandLine(t, "pihole-exporter")
+
+	cfg := parseConfig()
+
+	if cfg.metricsExporter != metricsExporterOTLPHTTP {
+		t.Fatalf("metricsExporter = %q, want %q", cfg.metricsExporter, metricsExporterOTLPHTTP)
+	}
+}
+
 func withTestCommandLine(t *testing.T, args ...string) {
 	t.Helper()
 

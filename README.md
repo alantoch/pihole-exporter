@@ -1,6 +1,6 @@
 # Pi-hole Exporter
 
-Pi-hole Exporter turns Pi-hole v6 statistics into Prometheus metrics.
+Pi-hole Exporter turns Pi-hole v6 statistics into metrics for Prometheus or OpenTelemetry-compatible backends.
 
 Run the Docker Hub image with your Pi-hole URL and app password:
 
@@ -19,6 +19,8 @@ Then scrape `http://localhost:9617/metrics` or check the exporter with:
 ```sh
 curl http://localhost:9617/healthz
 ```
+
+Prometheus is the default metrics exporter. To use another backend, set `OTEL_METRICS_EXPORTER`.
 
 ## Docker Compose
 
@@ -111,7 +113,8 @@ scrape_configs:
 - Supports Pi-hole API `6.0`
 - Authenticates with a Pi-hole app password through `/api/auth`
 - Reuses and refreshes Pi-hole sessions automatically
-- Exposes Prometheus metrics on `/metrics`
+- Exposes Prometheus metrics on `/metrics` by default
+- Can export metrics through OpenTelemetry OTLP or stdout exporters
 - Exposes a simple health check on `/healthz`
 - Ships with a multi-stage Dockerfile that builds a static scratch image
 
@@ -131,10 +134,39 @@ Configuration can be supplied with flags or environment variables.
 | `-pihole-url` | `PIHOLE_BASE_URL` | required | Pi-hole base URL, including scheme and host |
 | `-password` | `PIHOLE_APP_PASSWORD` | required | Pi-hole app password |
 | `-timeout` | `SCRAPE_TIMEOUT` | `10s` | Timeout for each Pi-hole scrape |
+| `-metrics-exporter` | `OTEL_METRICS_EXPORTER` | `prometheus` | Metrics exporter: `prometheus`, `otlp`, `otlpgrpc`, `otlphttp`, or `stdout` |
 
 `SCRAPE_TIMEOUT` accepts Go duration strings such as `5s`, `30s`, or `1m`. Plain integer values are treated as seconds.
 
 The exporter removes `PIHOLE_APP_PASSWORD` from its process environment after configuration is parsed. The password still remains in process memory because the exporter needs it to authenticate and refresh Pi-hole sessions.
+
+## Metrics Exporters
+
+When `OTEL_METRICS_EXPORTER` is unset or set to `prometheus`, the exporter keeps the existing pull-based behavior and serves metrics at `/metrics`.
+
+For OpenTelemetry push exporters, set one of:
+
+| Value | Behavior |
+| --- | --- |
+| `otlp` | Uses OTLP. Defaults to gRPC unless `OTEL_EXPORTER_OTLP_METRICS_PROTOCOL` or `OTEL_EXPORTER_OTLP_PROTOCOL` is set to `http/protobuf` |
+| `otlpgrpc` | Uses the OTLP gRPC metric exporter |
+| `otlphttp` | Uses the OTLP HTTP/protobuf metric exporter |
+| `stdout` | Writes OpenTelemetry metrics to stdout, mainly for local checks |
+
+The OTLP exporters use the standard OpenTelemetry environment variables, such as `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`, and `OTEL_EXPORTER_OTLP_HEADERS`. `OTEL_METRIC_EXPORT_INTERVAL` and `OTEL_METRIC_EXPORT_TIMEOUT` are supported in milliseconds.
+
+Example OTLP/HTTP run:
+
+```sh
+docker run --rm -p 9617:9617 \
+  -e PIHOLE_BASE_URL="http://192.168.0.2" \
+  -e PIHOLE_APP_PASSWORD="your-app-password" \
+  -e OTEL_METRICS_EXPORTER="otlphttp" \
+  -e OTEL_EXPORTER_OTLP_ENDPOINT="http://otel-collector:4318" \
+  alantoch/pihole-exporter:latest
+```
+
+With OpenTelemetry exporters, `/healthz` remains available on the HTTP listener. `/metrics` is only registered when the selected exporter is `prometheus`.
 
 ## Run Locally
 
@@ -178,6 +210,25 @@ docker buildx build \
   -t alantoch/pihole-exporter:latest \
   --push .
 ```
+
+## Scheduled Docker Releases
+
+The GitHub Actions workflow in `.github/workflows/docker-release.yml` runs every 24 hours and can also be started manually.
+
+Each run:
+
+- Regenerates `pkg/pihole/metrics_gen.go` from the latest Pi-hole OpenAPI spec
+- Reads the embedded `CompiledPiHoleAPIVersion`
+- Checks whether `alantoch/pihole-exporter:<api-version>` already exists on Docker Hub
+- Skips the Docker build when that version tag already exists
+- Builds and pushes both `alantoch/pihole-exporter:latest` and `alantoch/pihole-exporter:<api-version>` when the version tag is new
+
+Configure these repository secrets before enabling the workflow:
+
+| Secret | Description |
+| --- | --- |
+| `DOCKERHUB_USERNAME` | Docker Hub username |
+| `DOCKERHUB_TOKEN` | Docker Hub access token with permission to push `alantoch/pihole-exporter` |
 
 Run the locally built image:
 
