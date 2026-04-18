@@ -2,33 +2,7 @@
 
 Pi-hole Exporter turns Pi-hole v6 statistics into Prometheus metrics.
 
-Most people should run it with Docker:
-
-```text
-alantoch/pihole-exporter:latest
-```
-
-The exporter connects to your Pi-hole API, signs in with a Pi-hole app password, and publishes metrics at:
-
-```text
-http://localhost:9617/metrics
-```
-
-## Install With Docker
-
-You need:
-
-- Docker
-- Pi-hole v6
-- A Pi-hole app password
-- The URL for your Pi-hole web/API port, for example `http://192.168.0.2:9000`
-
-In the examples below, replace:
-
-- `http://192.168.0.2:9000` with your Pi-hole URL
-- `your-app-password` with your Pi-hole app password
-
-Run the exporter:
+Run the Docker Hub image with your Pi-hole URL and app password:
 
 ```sh
 docker run -d \
@@ -40,46 +14,13 @@ docker run -d \
   alantoch/pihole-exporter:latest
 ```
 
-Check that it is running:
+Then scrape `http://localhost:9617/metrics` or check the exporter with:
 
 ```sh
 curl http://localhost:9617/healthz
 ```
 
-You should see:
-
-```text
-ok
-```
-
-Check the metrics:
-
-```sh
-curl http://localhost:9617/metrics
-```
-
-Prometheus, Grafana Alloy, or another scraper can now scrape:
-
-```text
-http://pihole-exporter:9617/metrics
-```
-
-or, from outside Docker:
-
-```text
-http://localhost:9617/metrics
-```
-
-## Install With Docker Compose
-
-Create a `.env` file next to `compose.yaml`:
-
-```sh
-PIHOLE_BASE_URL=http://192.168.0.2:9000
-PIHOLE_APP_PASSWORD=your-app-password
-```
-
-Create `compose.yaml`:
+## Docker Compose
 
 ```yaml
 services:
@@ -93,19 +34,7 @@ services:
       PIHOLE_APP_PASSWORD: ${PIHOLE_APP_PASSWORD}
 ```
 
-Start it:
-
-```sh
-docker compose up -d
-```
-
-Check it:
-
-```sh
-curl http://localhost:9617/healthz
-```
-
-## If Pi-hole Uses Host Networking
+## Host-Networked Pi-hole
 
 If Pi-hole is running with `network_mode: host`, the exporter usually cannot reach it by container name. Use one of these instead:
 
@@ -128,7 +57,7 @@ services:
       PIHOLE_APP_PASSWORD: ${PIHOLE_APP_PASSWORD}
 ```
 
-If the exporter is also attached to an internal monitoring network, add a second normal bridge network so it can reach Pi-hole:
+If the exporter is attached to an internal monitoring network, add a second non-internal bridge network so it can still reach Pi-hole:
 
 ```yaml
 services:
