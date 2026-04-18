@@ -2,6 +2,8 @@
 
 Pi-hole Exporter turns Pi-hole v6 statistics into metrics for Prometheus or OpenTelemetry-compatible backends.
 
+![Pi-hole exporter Grafana dashboard](docs/images/grafana-dashboard.png)
+
 Run the Docker Hub image with your Pi-hole URL and app password:
 
 ```sh
