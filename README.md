@@ -379,6 +379,25 @@ services:
       - ./config.alloy:/etc/alloy/config.alloy:ro
 ```
 
+## Grafana Dashboard
+
+An importable Grafana dashboard is available at `dashboards/pihole-exporter.json`.
+This repository carries the dashboard JSON directly so users can import it into their own Grafana instance.
+
+The dashboard includes:
+
+- Exporter health and scrape duration
+- Current blocking percentage and query rate
+- Query counters for total, blocked, forwarded, and cached queries
+- Query type, status, and reply breakdowns
+- Client, domain, upstream, and gravity freshness panels
+
+Import it from Grafana with **Dashboards > New > Import**, then upload `dashboards/pihole-exporter.json` and select your Prometheus datasource.
+
+The dashboard has an `instance` variable. With the Alloy configuration above, this matches labels such as `instance="raspberrypi"`.
+
+The current exporter metrics do not include individual client/domain labels for Pi-hole's top clients and top domains responses, so the dashboard shows the exported aggregate values rather than per-client or per-domain tables.
+
 ## Metrics
 
 The exporter generates metric definitions from the Pi-hole OpenAPI Metrics schemas and currently compiles metrics for Pi-hole API `6.0`.
