@@ -10,35 +10,33 @@ permissions:
 
 env:
   IMAGE_NAME: alantoch/pihole-exporter
+  PIHOLE_SPEC_URL: https://raw.githubusercontent.com/pi-hole/FTL/master/src/api/docs/content/specs/main.yaml
 
 jobs:
   docker-release:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: Regenerate metrics from latest Pi-hole OpenAPI spec
-        run: go generate ./...
-
-      - name: Read compiled Pi-hole API version
+      - name: Read latest Pi-hole API version from upstream spec
         id: version
         run: |
-          version="$(sed -n 's/^const CompiledPiHoleAPIVersion = "\(.*\)"$/\1/p' pkg/pihole/metrics_gen.go)"
+          version="$(
+            curl -fsSL "${PIHOLE_SPEC_URL}" | awk '
+              $1 == "info:" { in_info = 1; next }
+              in_info && $1 == "version:" {
+                print $2
+                exit
+              }
+              in_info && /^[^[:space:]]/ { in_info = 0 }
+            ' | tr -d "\"'"
+          )"
           if [ -z "$version" ]; then
-            echo "failed to read CompiledPiHoleAPIVersion from pkg/pihole/metrics_gen.go" >&2
+            echo "failed to read Pi-hole API version from ${PIHOLE_SPEC_URL}" >&2
             exit 1
           fi
 
           echo "value=$version" >> "$GITHUB_OUTPUT"
-          echo "Pi-hole API version: $version"
+          echo "Latest Pi-hole API version: $version"
 
       - name: Check Docker Hub version tag
         id: docker_tag
@@ -59,6 +57,39 @@ jobs:
 
           echo "exists=false" >> "$GITHUB_OUTPUT"
           echo "Docker tag ${IMAGE_NAME}:${VERSION} does not exist; building and pushing."
+
+      - name: Checkout
+        if: steps.docker_tag.outputs.exists == 'false'
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        if: steps.docker_tag.outputs.exists == 'false'
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Regenerate metrics from latest Pi-hole OpenAPI spec
+        if: steps.docker_tag.outputs.exists == 'false'
+        run: go generate ./...
+
+      - name: Verify generated Pi-hole API version
+        if: steps.docker_tag.outputs.exists == 'false'
+        env:
+          EXPECTED_VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          generated_version="$(sed -n 's/^const CompiledPiHoleAPIVersion = "\(.*\)"$/\1/p' pkg/pihole/metrics_gen.go)"
+          if [ -z "$generated_version" ]; then
+            echo "failed to read CompiledPiHoleAPIVersion from pkg/pihole/metrics_gen.go" >&2
+            exit 1
+          fi
+
+          if [ "$generated_version" != "$EXPECTED_VERSION" ]; then
+            echo "generated Pi-hole API version ${generated_version} does not match upstream version ${EXPECTED_VERSION}" >&2
+            exit 1
+          fi
+
+          echo "Generated Pi-hole API version matches upstream version: ${generated_version}"
 
       - name: Set up Docker Buildx
         if: steps.docker_tag.outputs.exists == 'false'
