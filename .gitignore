@@ -4,6 +4,7 @@
 .codex
 
 # Local IDE
+.claude/
 .vscode/
 .idea/
 *.swp
