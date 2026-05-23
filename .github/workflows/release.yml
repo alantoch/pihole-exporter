@@ -1,0 +1,53 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/pihole-exporter
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Verify CHANGELOG entry
+        run: |
+          version="${{ github.ref_name }}"
+          if ! grep -qF "## ${version}" CHANGELOG.md; then
+            echo "No CHANGELOG.md entry found for ${version}" >&2
+            exit 1
+          fi
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build binary for linux/arm64
+        run: |
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
+          go build -trimpath -ldflags="-s -w" -o pihole-exporter ./cmd/pihole-exporter
+
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | podman login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Build and push image
+        run: |
+          version="${{ github.ref_name }}"
+          podman build \
+            --platform linux/arm64 \
+            --tag "${{ env.IMAGE }}:${version}" \
+            --tag "${{ env.IMAGE }}:latest" \
+            .
+          podman push "${{ env.IMAGE }}:${version}"
+          podman push "${{ env.IMAGE }}:latest"
