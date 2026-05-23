@@ -22,7 +22,7 @@ jobs:
       - name: Verify CHANGELOG entry
         run: |
           version="${{ github.ref_name }}"
-          if ! grep -qF "## ${version}" CHANGELOG.md; then
+          if ! grep -qF "## [${version}]" CHANGELOG.md; then
             echo "No CHANGELOG.md entry found for ${version}" >&2
             exit 1
           fi
